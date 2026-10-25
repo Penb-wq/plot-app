@@ -1,0 +1,544 @@
+:root {
+  --background: #f1efe8;
+  --surface: #fbfaf6;
+  --ink: #20211e;
+  --muted: #686a62;
+  --faint: #a8a9a1;
+  --line: #d8d6ce;
+  --line-soft: #e8e6df;
+  --accent: #ee5b38;
+  --accent-strong: #d94b2b;
+  --error: #b33e2d;
+  --radius: 8px;
+  --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, "Liberation Mono",
+    monospace;
+  --sans: "Avenir Next", Avenir, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color-scheme: light;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app {
+  width: min(1180px, 100%);
+  height: 100dvh;
+  margin: 0 auto;
+  padding:
+    max(18px, env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  color: var(--ink);
+  font-size: 25px;
+  font-weight: 750;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.brand span {
+  color: var(--accent);
+}
+
+.edition {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.edition-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.composer {
+  margin-top: clamp(22px, 5.8vh, 52px);
+  margin-bottom: 16px;
+}
+
+.formula-shell {
+  min-height: 68px;
+  padding: 8px 8px 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 0 rgb(32 33 30 / 3%);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.formula-shell:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.formula-shell.has-error {
+  border-color: color-mix(in srgb, var(--error) 72%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 9%, transparent);
+}
+
+.formula-prefix {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: clamp(19px, 2.2vw, 24px);
+  font-weight: 500;
+  line-height: 1;
+  transform: translateY(1px);
+  user-select: none;
+}
+
+.expression-input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: clamp(19px, 2.2vw, 24px);
+  font-weight: 500;
+  line-height: 1.3;
+  caret-color: var(--accent);
+}
+
+.expression-input::placeholder {
+  color: var(--faint);
+}
+
+.plot-button {
+  min-width: 84px;
+  height: 50px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--surface);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 650;
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.plot-button:hover {
+  background: #34362f;
+}
+
+.plot-button:active {
+  transform: translateY(1px);
+}
+
+.plot-button:focus-visible,
+.example-chip:focus-visible,
+.icon-button:focus-visible,
+.brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.plot-button .icon {
+  color: var(--accent);
+}
+
+.icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.expression-error {
+  min-height: 18px;
+  margin: 5px 3px 0;
+  color: var(--error);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.examples {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.examples-label {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.example-chip {
+  height: 29px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.example-chip:hover {
+  border-color: #b9b7ad;
+  background: rgb(255 255 255 / 38%);
+  color: var(--ink);
+}
+
+.example-chip.is-active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.plot-panel {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgb(32 33 30 / 3%);
+}
+
+#plot-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#plot-canvas.is-dragging {
+  cursor: grabbing;
+}
+
+.plot-legend {
+  position: absolute;
+  top: 12px;
+  left: 13px;
+  max-width: calc(100% - 82px);
+  min-height: 29px;
+  padding: 6px 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid rgb(216 214 206 / 86%);
+  border-radius: 5px;
+  background: rgb(251 250 246 / 88%);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+}
+
+#legend-expression {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-line {
+  width: 17px;
+  height: 2px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.plot-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgb(251 250 246 / 93%);
+  box-shadow: 0 4px 18px rgb(32 33 30 / 7%);
+  backdrop-filter: blur(7px);
+}
+
+.icon-button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.icon-button:last-child {
+  border-bottom: 0;
+}
+
+.icon-button:hover {
+  background: #f1efe8;
+  color: var(--ink);
+}
+
+.icon-button:active {
+  background: #e9e6dd;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+@media (max-width: 620px) {
+  .app {
+    padding:
+      max(15px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(14px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+  }
+
+  .topbar {
+    min-height: 30px;
+  }
+
+  .brand {
+    font-size: 23px;
+  }
+
+  .composer {
+    margin-top: 19px;
+    margin-bottom: 12px;
+  }
+
+  .formula-shell {
+    min-height: 62px;
+    padding: 7px 7px 7px 15px;
+    gap: 9px;
+  }
+
+  .formula-prefix,
+  .expression-input {
+    font-size: 19px;
+  }
+
+  .plot-button {
+    width: 48px;
+    min-width: 48px;
+    height: 46px;
+    padding: 0;
+  }
+
+  .plot-button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .expression-error {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .examples {
+    gap: 5px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .examples::-webkit-scrollbar {
+    display: none;
+  }
+
+  .examples-label {
+    flex: 0 0 auto;
+  }
+
+  .example-chip {
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 9px;
+  }
+
+  .plot-panel {
+    min-height: 230px;
+  }
+
+  .plot-legend {
+    top: 10px;
+    left: 10px;
+    max-width: calc(100% - 70px);
+    min-height: 27px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .plot-controls {
+    right: 10px;
+    bottom: 10px;
+  }
+
+  .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-height: 680px) {
+  .composer {
+    margin-top: 12px;
+    margin-bottom: 10px;
+  }
+
+  .formula-shell {
+    min-height: 58px;
+  }
+
+  .examples {
+    min-height: 26px;
+    margin-top: -2px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .app {
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    min-height: 25px;
+  }
+
+  .brand {
+    font-size: 20px;
+  }
+
+  .composer {
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  .formula-shell {
+    min-height: 50px;
+  }
+
+  .plot-button {
+    height: 38px;
+  }
+
+  .expression-error {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .examples {
+    display: none;
+  }
+
+  .plot-panel {
+    min-height: 160px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
