@@ -3,6 +3,7 @@
 
   const FunctionPlot = window.FunctionPlot;
   const canvas = document.querySelector("#plot-canvas");
+  const plotPanel = canvas?.closest(".plot-panel");
   const expressionError = document.querySelector("#expression-error");
   const plotButton = document.querySelector("#plot-button");
   const exampleButtons = [...document.querySelectorAll(".example-chip")];
@@ -55,6 +56,7 @@
 
   if (
     !canvas ||
+    !plotPanel ||
     !context ||
     !FunctionPlot ||
     !expressionError ||
@@ -68,6 +70,10 @@
   let activeSlot = slots[0];
   let inputTimer = 0;
   let drawFrame = 0;
+  let canvasSyncFrame = 0;
+  let canvasRetryTimer = 0;
+  let canvasSyncAttempts = 0;
+  let resizeObserver = null;
   let pinchState = null;
 
   function createSlot(index, selectors) {
@@ -394,10 +400,44 @@
     });
   }
 
+  function scheduleCanvasSync() {
+    if (canvasSyncFrame) {
+      return;
+    }
+
+    canvasSyncFrame = window.requestAnimationFrame(() => {
+      canvasSyncFrame = 0;
+      syncCanvasSize();
+    });
+  }
+
   function syncCanvasSize() {
+    window.clearTimeout(canvasRetryTimer);
+
+    const width = plotPanel.clientWidth;
+    const height = plotPanel.clientHeight;
     const rect = canvas.getBoundingClientRect();
-    const width = Math.max(1, rect.width);
-    const height = Math.max(1, rect.height);
+
+    if (width < 2 || height < 2) {
+      canvasSyncAttempts += 1;
+
+      if (canvasSyncAttempts <= 20) {
+        canvasRetryTimer = window.setTimeout(scheduleCanvasSync, 80);
+      }
+      return;
+    }
+
+    canvasSyncAttempts = 0;
+
+    if (
+      Math.abs(rect.width - width) > 1 ||
+      Math.abs(rect.height - height) > 1
+    ) {
+      // Some mobile WebViews fail to resolve "height: 100%" inside flex layouts.
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+    }
+
     const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
     const pixelWidth = Math.round(width * dpr);
     const pixelHeight = Math.round(height * dpr);
@@ -413,6 +453,38 @@
 
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     scheduleDraw();
+  }
+
+  function setupCanvasResizeHandling() {
+    if (typeof window.ResizeObserver === "function") {
+      try {
+        resizeObserver = new window.ResizeObserver(scheduleCanvasSync);
+        resizeObserver.observe(plotPanel);
+      } catch {
+        resizeObserver = null;
+      }
+    }
+
+    window.addEventListener("resize", scheduleCanvasSync, { passive: true });
+    window.addEventListener(
+      "orientationchange",
+      () => window.setTimeout(scheduleCanvasSync, 120),
+      { passive: true },
+    );
+    window.addEventListener("pageshow", scheduleCanvasSync);
+    window.addEventListener("load", scheduleCanvasSync);
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener(
+        "resize",
+        scheduleCanvasSync,
+        { passive: true },
+      );
+    }
+
+    // Give mobile browsers two later passes for dynamic viewport and font layout.
+    window.setTimeout(scheduleCanvasSync, 100);
+    window.setTimeout(scheduleCanvasSync, 400);
   }
 
   function drawGridLineSeries(step, color, lineWidth) {
@@ -600,6 +672,7 @@
 
   function draw() {
     if (metrics.width <= 1 || metrics.height <= 1) {
+      scheduleCanvasSync();
       return;
     }
 
@@ -1000,10 +1073,6 @@
     event.preventDefault();
   });
 
-  const resizeObserver = new ResizeObserver(syncCanvasSize);
-  resizeObserver.observe(canvas);
-  window.addEventListener("resize", syncCanvasSize);
-
   const storedExpressions = readStoredExpressions();
 
   for (const slot of slots) {
@@ -1018,8 +1087,12 @@
     autoFit: true,
     persist: false,
   });
+  setupCanvasResizeHandling();
 
   if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(scheduleDraw);
+    document.fonts.ready.then(() => {
+      syncCanvasSize();
+      scheduleDraw();
+    });
   }
 })();
