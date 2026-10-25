@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f1efe8" />
     <meta
       name="description"
-      content="一个轻量的函数图像绘制工具，输入表达式即可查看曲线。"
+      content="一个轻量的函数图像绘制工具，可同时输入并比较两个函数。"
     />
     <link
       rel="icon"
@@ -21,32 +21,68 @@
         <a class="brand" href="./index.html" aria-label="plot. 首页">
           plot<span aria-hidden="true">.</span>
         </a>
-        <div class="edition" aria-label="版本 alpha 01">
+        <div class="edition" aria-label="版本 alpha 02">
           <span class="edition-dot" aria-hidden="true"></span>
-          alpha 01
+          alpha 02
         </div>
       </header>
 
       <section class="composer" aria-labelledby="composer-title">
         <h1 id="composer-title" class="visually-hidden">函数图像绘制</h1>
 
-        <div class="formula-shell" id="formula-shell">
-          <span class="formula-prefix" aria-hidden="true">y =</span>
-          <label class="visually-hidden" for="expression">函数表达式</label>
-          <input
-            id="expression"
-            class="expression-input"
-            type="text"
-            value="sin(x)"
-            placeholder="sin(x)"
-            inputmode="text"
-            enterkeyhint="done"
-            autocomplete="off"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-            aria-describedby="expression-error"
-          />
+        <div class="function-fields" id="function-fields">
+          <div class="formula-row" id="formula-row-1" data-slot="0">
+            <span class="series-swatch" aria-hidden="true"></span>
+            <span class="formula-prefix" aria-hidden="true">y<sub>1</sub> =</span>
+            <label class="visually-hidden" for="expression-1">第一个函数表达式</label>
+            <input
+              id="expression-1"
+              class="expression-input"
+              type="text"
+              value="sin(x)"
+              placeholder="sin(x)"
+              inputmode="text"
+              enterkeyhint="done"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              aria-describedby="expression-error"
+            />
+          </div>
+
+          <div class="formula-row" id="formula-row-2" data-slot="1">
+            <span class="series-swatch" aria-hidden="true"></span>
+            <span class="formula-prefix" aria-hidden="true">y<sub>2</sub> =</span>
+            <label class="visually-hidden" for="expression-2">第二个函数表达式</label>
+            <input
+              id="expression-2"
+              class="expression-input"
+              type="text"
+              value="cos(x)"
+              placeholder="cos(x)"
+              inputmode="text"
+              enterkeyhint="done"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              aria-describedby="expression-error"
+            />
+          </div>
+        </div>
+
+        <p class="expression-error" id="expression-error" role="status" aria-live="polite"></p>
+
+        <div class="composer-footer">
+          <div class="examples" aria-label="函数示例">
+            <span class="examples-label">示例</span>
+            <button class="example-chip" type="button" data-expression="sin(x)">sin(x)</button>
+            <button class="example-chip" type="button" data-expression="x^2">x^2</button>
+            <button class="example-chip" type="button" data-expression="1/x">1/x</button>
+            <button class="example-chip" type="button" data-expression="sqrt(x)">sqrt(x)</button>
+          </div>
+
           <button
             class="plot-button"
             id="plot-button"
@@ -72,16 +108,6 @@
             </svg>
           </button>
         </div>
-
-        <p class="expression-error" id="expression-error" role="status" aria-live="polite"></p>
-
-        <div class="examples" aria-label="函数示例">
-          <span class="examples-label">示例</span>
-          <button class="example-chip" type="button" data-expression="sin(x)">sin(x)</button>
-          <button class="example-chip" type="button" data-expression="x^2">x^2</button>
-          <button class="example-chip" type="button" data-expression="1/x">1/x</button>
-          <button class="example-chip" type="button" data-expression="sqrt(x)">sqrt(x)</button>
-        </div>
       </section>
 
       <section class="plot-panel" aria-label="函数图像画布">
@@ -90,8 +116,14 @@
         </canvas>
 
         <div class="plot-legend" aria-live="polite">
-          <span class="legend-line" aria-hidden="true"></span>
-          <span id="legend-expression">y = sin(x)</span>
+          <div class="legend-item" id="legend-item-1">
+            <span class="legend-line" aria-hidden="true"></span>
+            <span id="legend-expression-1">y₁ = sin(x)</span>
+          </div>
+          <div class="legend-item" id="legend-item-2">
+            <span class="legend-line" aria-hidden="true"></span>
+            <span id="legend-expression-2">y₂ = cos(x)</span>
+          </div>
         </div>
 
         <div class="plot-controls" role="group" aria-label="画布控制">

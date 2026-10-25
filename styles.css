@@ -7,6 +7,8 @@
   --line: #d8d6ce;
   --line-soft: #e8e6df;
   --accent: #ee5b38;
+  --series-1: #ee5b38;
+  --series-2: #2f73d8;
   --accent-strong: #d94b2b;
   --error: #b33e2d;
   --radius: 8px;
@@ -106,12 +108,19 @@ a {
   margin-bottom: 16px;
 }
 
-.formula-shell {
+.function-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.formula-row {
+  --series-color: var(--series-1);
   min-height: 68px;
-  padding: 8px 8px 8px 20px;
+  padding: 8px 16px 8px 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -121,25 +130,48 @@ a {
     box-shadow 160ms ease;
 }
 
-.formula-shell:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 72%, var(--line));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
+.formula-row[data-slot="1"] {
+  --series-color: var(--series-2);
 }
 
-.formula-shell.has-error {
+.formula-row.is-active {
+  border-color: color-mix(in srgb, var(--series-color) 38%, var(--line));
+}
+
+.formula-row:focus-within {
+  border-color: color-mix(in srgb, var(--series-color) 72%, var(--line));
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--series-color) 13%, transparent);
+}
+
+.formula-row.has-error {
   border-color: color-mix(in srgb, var(--error) 72%, var(--line));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 9%, transparent);
+}
+
+.series-swatch {
+  width: 16px;
+  height: 3px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  background: var(--series-color);
 }
 
 .formula-prefix {
   flex: 0 0 auto;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: clamp(19px, 2.2vw, 24px);
+  font-size: clamp(18px, 1.8vw, 22px);
   font-weight: 500;
   line-height: 1;
-  transform: translateY(1px);
+  white-space: nowrap;
   user-select: none;
+}
+
+.formula-prefix sub {
+  font-size: 0.62em;
+  line-height: 0;
+  vertical-align: -0.16em;
 }
 
 .expression-input {
@@ -151,20 +183,31 @@ a {
   background: transparent;
   color: var(--ink);
   font-family: var(--mono);
-  font-size: clamp(19px, 2.2vw, 24px);
+  font-size: clamp(18px, 1.8vw, 22px);
   font-weight: 500;
   line-height: 1.3;
-  caret-color: var(--accent);
+  caret-color: var(--series-color);
 }
 
 .expression-input::placeholder {
   color: var(--faint);
 }
 
+.composer-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.composer-footer .examples {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .plot-button {
-  min-width: 84px;
-  height: 50px;
-  padding: 0 16px;
+  min-width: 82px;
+  height: 36px;
+  padding: 0 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -214,6 +257,10 @@ a {
   color: var(--error);
   font-size: 12px;
   line-height: 18px;
+}
+
+.expression-error.is-neutral {
+  color: var(--muted);
 }
 
 .examples {
@@ -288,12 +335,13 @@ a {
   position: absolute;
   top: 12px;
   left: 13px;
-  max-width: calc(100% - 82px);
+  max-width: min(390px, calc(100% - 82px));
   min-height: 29px;
-  padding: 6px 9px;
+  padding: 7px 9px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   overflow: hidden;
   border: 1px solid rgb(216 214 206 / 86%);
   border-radius: 5px;
@@ -306,7 +354,24 @@ a {
   backdrop-filter: blur(7px);
 }
 
-#legend-expression {
+.legend-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 150ms ease;
+}
+
+.legend-item[hidden] {
+  display: none;
+}
+
+.legend-item.is-stale {
+  opacity: 0.48;
+}
+
+#legend-expression-1,
+#legend-expression-2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -318,6 +383,14 @@ a {
   flex: 0 0 auto;
   border-radius: 2px;
   background: var(--accent);
+}
+
+#legend-item-1 .legend-line {
+  background: var(--series-1);
+}
+
+#legend-item-2 .legend-line {
+  background: var(--series-2);
 }
 
 .plot-controls {
@@ -374,6 +447,12 @@ a {
   border: 0 !important;
 }
 
+@media (max-width: 760px) {
+  .function-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 620px) {
   .app {
     padding:
@@ -392,25 +471,29 @@ a {
   }
 
   .composer {
-    margin-top: 19px;
-    margin-bottom: 12px;
+    margin-top: 15px;
+    margin-bottom: 10px;
   }
 
-  .formula-shell {
-    min-height: 62px;
-    padding: 7px 7px 7px 15px;
+  .function-fields {
+    gap: 7px;
+  }
+
+  .formula-row {
+    min-height: 58px;
+    padding: 7px 12px;
     gap: 9px;
   }
 
   .formula-prefix,
   .expression-input {
-    font-size: 19px;
+    font-size: 18px;
   }
 
   .plot-button {
-    width: 48px;
-    min-width: 48px;
-    height: 46px;
+    width: 44px;
+    min-width: 44px;
+    height: 38px;
     padding: 0;
   }
 
@@ -425,8 +508,12 @@ a {
   }
 
   .expression-error {
-    margin-top: 4px;
+    margin-top: 2px;
     font-size: 11px;
+  }
+
+  .composer-footer {
+    gap: 8px;
   }
 
   .examples {
@@ -461,6 +548,7 @@ a {
     min-height: 27px;
     padding: 5px 8px;
     font-size: 10px;
+    gap: 5px;
   }
 
   .plot-controls {
@@ -476,17 +564,29 @@ a {
 
 @media (max-height: 680px) {
   .composer {
-    margin-top: 12px;
-    margin-bottom: 10px;
+    margin-top: 10px;
+    margin-bottom: 8px;
   }
 
-  .formula-shell {
-    min-height: 58px;
+  .function-fields {
+    gap: 6px;
+  }
+
+  .formula-row {
+    min-height: 52px;
   }
 
   .examples {
-    min-height: 26px;
-    margin-top: -2px;
+    min-height: 28px;
+  }
+
+  .plot-button {
+    height: 34px;
+  }
+
+  .expression-error {
+    min-height: 16px;
+    line-height: 16px;
   }
 }
 
@@ -509,12 +609,18 @@ a {
     margin-bottom: 8px;
   }
 
-  .formula-shell {
-    min-height: 50px;
+  .function-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .formula-row {
+    min-height: 46px;
+    padding-top: 5px;
+    padding-bottom: 5px;
   }
 
   .plot-button {
-    height: 38px;
+    height: 32px;
   }
 
   .expression-error {

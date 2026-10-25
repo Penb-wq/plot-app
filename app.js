@@ -3,19 +3,12 @@
 
   const FunctionPlot = window.FunctionPlot;
   const canvas = document.querySelector("#plot-canvas");
-  const expressionInput = document.querySelector("#expression");
-  const formulaShell = document.querySelector("#formula-shell");
   const expressionError = document.querySelector("#expression-error");
-  const legendExpression = document.querySelector("#legend-expression");
   const plotButton = document.querySelector("#plot-button");
   const exampleButtons = [...document.querySelectorAll(".example-chip")];
   const zoomInButton = document.querySelector("#zoom-in");
   const zoomOutButton = document.querySelector("#zoom-out");
   const resetViewButton = document.querySelector("#reset-view");
-
-  if (!canvas || !expressionInput || !FunctionPlot) {
-    return;
-  }
 
   const COLORS = {
     background: "#fbfaf6",
@@ -23,10 +16,13 @@
     majorGrid: "#e7e4dd",
     axis: "#b8b8b0",
     tick: "#686a62",
-    curve: "#ee5b38",
   };
 
-  const STORAGE_KEY = "plot.expression.v1";
+  const SERIES_COLORS = ["#ee5b38", "#2f73d8"];
+  const SERIES_LABELS = ["y₁", "y₂"];
+  const STORAGE_KEY = "plot.functions.v2";
+  const LEGACY_STORAGE_KEY = "plot.expression.v1";
+  const DEFAULT_EXPRESSIONS = ["sin(x)", "cos(x)"];
   const DEFAULT_X_RANGE = { min: -5, max: 5 };
   const DEFAULT_VIEW = { xMin: -5, xMax: 5, yMin: -3, yMax: 3 };
   const MIN_SPAN = 1e-8;
@@ -34,7 +30,7 @@
   const MONO_FONT =
     '"SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace';
 
-  const context = canvas.getContext("2d");
+  const context = canvas?.getContext("2d");
   const pointers = new Map();
   const metrics = {
     width: 1,
@@ -42,12 +38,54 @@
     dpr: 1,
   };
 
+  const slots = [
+    createSlot(0, {
+      input: "#expression-1",
+      row: "#formula-row-1",
+      legendItem: "#legend-item-1",
+      legendExpression: "#legend-expression-1",
+    }),
+    createSlot(1, {
+      input: "#expression-2",
+      row: "#formula-row-2",
+      legendItem: "#legend-item-2",
+      legendExpression: "#legend-expression-2",
+    }),
+  ];
+
+  if (
+    !canvas ||
+    !context ||
+    !FunctionPlot ||
+    !expressionError ||
+    !plotButton ||
+    slots.some((slot) => !slot.input || !slot.row)
+  ) {
+    return;
+  }
+
   let view = { ...DEFAULT_VIEW };
-  let currentFunction = null;
-  let curveAlpha = 1;
+  let activeSlot = slots[0];
   let inputTimer = 0;
   let drawFrame = 0;
   let pinchState = null;
+
+  function createSlot(index, selectors) {
+    return {
+      index,
+      color: SERIES_COLORS[index],
+      label: SERIES_LABELS[index],
+      input: document.querySelector(selectors.input),
+      row: document.querySelector(selectors.row),
+      legendItem: document.querySelector(selectors.legendItem),
+      legendExpression: document.querySelector(
+        selectors.legendExpression,
+      ),
+      compiled: null,
+      lastCompiled: null,
+      error: null,
+    };
+  }
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
@@ -65,21 +103,97 @@
     return `${error?.message || "这个表达式暂时无法绘制"}${suffix}`;
   }
 
-  function setError(message, invalid = true) {
+  function setStatus(message, invalid = true) {
     expressionError.textContent = message;
-    formulaShell.classList.toggle("has-error", Boolean(message) && invalid);
+    expressionError.classList.toggle(
+      "is-neutral",
+      Boolean(message) && !invalid,
+    );
   }
 
-  function clearError() {
+  function clearStatus() {
     expressionError.textContent = "";
-    formulaShell.classList.remove("has-error");
+    expressionError.classList.remove("is-neutral");
   }
 
-  function updateLegend(source) {
-    legendExpression.textContent = source ? `y = ${source}` : "y =";
+  function readStoredExpressions() {
+    try {
+      const current = window.localStorage.getItem(STORAGE_KEY);
+
+      if (current) {
+        const parsed = JSON.parse(current);
+
+        if (parsed && Array.isArray(parsed.expressions)) {
+          return [
+            String(parsed.expressions[0] ?? ""),
+            String(parsed.expressions[1] ?? ""),
+          ];
+        }
+      }
+
+      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+
+      if (legacy !== null && legacy.trim()) {
+        const first = legacy.trim();
+        const second =
+          first.toLowerCase() === DEFAULT_EXPRESSIONS[1]
+            ? DEFAULT_EXPRESSIONS[0]
+            : DEFAULT_EXPRESSIONS[1];
+        return [first, second];
+      }
+    } catch {
+      // Fall through to defaults when storage is unavailable or malformed.
+    }
+
+    return [...DEFAULT_EXPRESSIONS];
   }
 
-  function updateActiveExample(source) {
+  function storeExpressions(expressions) {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ expressions }),
+      );
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // The graph still works when storage is unavailable.
+    }
+  }
+
+  function persistSlots() {
+    storeExpressions(
+      slots.map((slot) => {
+        if (slot.compiled) {
+          return slot.compiled.source;
+        }
+
+        if (!slot.input.value.trim()) {
+          return "";
+        }
+
+        return slot.lastCompiled?.source || "";
+      }),
+    );
+  }
+
+  function activateSlot(slot) {
+    activeSlot = slot;
+
+    for (const candidate of slots) {
+      candidate.row.classList.toggle(
+        "is-active",
+        candidate.index === activeSlot.index,
+      );
+    }
+
+    updateActiveExample();
+  }
+
+  function updateActiveExample() {
+    const source =
+      activeSlot.compiled?.source ||
+      FunctionPlot.normalizeExpression(activeSlot.input.value);
+
     for (const button of exampleButtons) {
       button.classList.toggle(
         "is-active",
@@ -88,27 +202,23 @@
     }
   }
 
-  function readStoredExpression() {
-    try {
-      return window.localStorage.getItem(STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  }
+  function updateLegends() {
+    for (const slot of slots) {
+      const source =
+        slot.compiled?.source ||
+        (slot.error ? slot.lastCompiled?.source : "") ||
+        "";
+      const hasLegend = Boolean(source);
 
-  function storeExpression(source) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, source);
-    } catch {
-      // The graph still works when storage is unavailable.
-    }
-  }
+      slot.legendItem.hidden = !hasLegend;
+      slot.legendItem.classList.toggle(
+        "is-stale",
+        Boolean(slot.error) && Boolean(source),
+      );
 
-  function removeStoredExpression() {
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Nothing to clean up when storage is unavailable.
+      if (hasLegend) {
+        slot.legendExpression.textContent = `${slot.label} = ${source}`;
+      }
     }
   }
 
@@ -187,19 +297,21 @@
     };
   }
 
-  function computeAutoView(compiledFunction) {
-    const sampleCount = 401;
+  function computeAutoView(compiledFunctions) {
+    const sampleCount = 351;
     const values = [];
 
-    for (let index = 0; index < sampleCount; index += 1) {
-      const ratio = index / (sampleCount - 1);
-      const x =
-        DEFAULT_X_RANGE.min +
-        ratio * (DEFAULT_X_RANGE.max - DEFAULT_X_RANGE.min);
-      const y = compiledFunction.evaluate(x);
+    for (const compiledFunction of compiledFunctions) {
+      for (let index = 0; index < sampleCount; index += 1) {
+        const ratio = index / (sampleCount - 1);
+        const x =
+          DEFAULT_X_RANGE.min +
+          ratio * (DEFAULT_X_RANGE.max - DEFAULT_X_RANGE.min);
+        const y = compiledFunction.evaluate(x);
 
-      if (Number.isFinite(y)) {
-        values.push(y);
+        if (Number.isFinite(y)) {
+          values.push(y);
+        }
       }
     }
 
@@ -425,7 +537,7 @@
     drawLabels(xStep, yStep);
   }
 
-  function drawCurve(compiledFunction) {
+  function drawCurve(compiledFunction, color, alpha) {
     const width = metrics.width;
     const height = metrics.height;
     const sampleCount = Math.max(600, Math.ceil(width * 1.6));
@@ -477,8 +589,8 @@
       shouldMove = false;
     }
 
-    context.globalAlpha = curveAlpha;
-    context.strokeStyle = COLORS.curve;
+    context.globalAlpha = alpha;
+    context.strokeStyle = color;
     context.lineWidth = 2.2;
     context.lineCap = "round";
     context.lineJoin = "round";
@@ -498,91 +610,125 @@
 
     drawGrid();
 
-    if (currentFunction) {
-      drawCurve(currentFunction);
+    for (const slot of slots) {
+      if (!slot.compiled && slot.error && slot.lastCompiled) {
+        drawCurve(slot.lastCompiled, slot.color, 0.22);
+      }
+    }
+
+    for (const slot of slots) {
+      if (slot.compiled) {
+        drawCurve(slot.compiled, slot.color, 1);
+      }
     }
   }
 
-  function clearPlot({ persist = true } = {}) {
-    currentFunction = null;
-    curveAlpha = 1;
-    view = { ...DEFAULT_VIEW };
-    clearError();
-    updateLegend("");
-    updateActiveExample("");
+  function refreshFunctions({
+    autoFit = true,
+    persist = true,
+    canonicalize = false,
+  } = {}) {
+    let firstError = null;
 
-    if (persist) {
-      removeStoredExpression();
+    for (const slot of slots) {
+      const raw = slot.input.value.trim();
+      slot.error = null;
+
+      if (!raw) {
+        slot.compiled = null;
+        slot.lastCompiled = null;
+      } else {
+        try {
+          const compiled = FunctionPlot.compile(raw);
+          slot.compiled = compiled;
+          slot.lastCompiled = compiled;
+        } catch (error) {
+          slot.compiled = null;
+          slot.error = error;
+          firstError ||= { slot, error };
+        }
+      }
+
+      const hasError = Boolean(slot.error);
+      slot.row.classList.toggle("has-error", hasError);
+
+      if (hasError) {
+        slot.input.setAttribute("aria-invalid", "true");
+      } else {
+        slot.input.removeAttribute("aria-invalid");
+      }
     }
 
-    scheduleDraw();
-  }
-
-  function applyExpression(
-    rawExpression,
-    { autoFit = true, persist = true, canonicalize = false } = {},
-  ) {
-    if (!String(rawExpression).trim()) {
-      clearPlot({ persist });
-      return false;
-    }
-
-    let compiledFunction;
-
-    try {
-      compiledFunction = FunctionPlot.compile(rawExpression);
-    } catch (error) {
-      curveAlpha = 0.28;
-      setError(errorToMessage(error), true);
-      scheduleDraw();
-      return false;
-    }
-
-    currentFunction = compiledFunction;
-    curveAlpha = 1;
-    clearError();
-    updateLegend(compiledFunction.source);
-    updateActiveExample(compiledFunction.source);
+    const validFunctions = slots
+      .filter((slot) => slot.compiled)
+      .map((slot) => slot.compiled);
+    let domainMessage = "";
 
     if (autoFit) {
-      const fitted = computeAutoView(compiledFunction);
-      view = sanitizeView(fitted.view);
+      if (validFunctions.length > 0) {
+        const fitted = computeAutoView(validFunctions);
+        view = sanitizeView(fitted.view);
 
-      if (!fitted.hasSamples) {
-        setError("当前 x 范围内没有可绘制的实数点", false);
+        if (!fitted.hasSamples) {
+          domainMessage = "当前 x 范围内没有可绘制的实数点";
+        }
+      } else if (slots.every((slot) => !slot.input.value.trim())) {
+        view = { ...DEFAULT_VIEW };
       }
     }
 
     if (canonicalize) {
-      expressionInput.value = compiledFunction.source;
+      for (const slot of slots) {
+        if (slot.compiled) {
+          slot.input.value = slot.compiled.source;
+        }
+      }
+    }
+
+    updateLegends();
+
+    if (firstError) {
+      setStatus(
+        `函数 ${firstError.slot.index + 1}：${errorToMessage(firstError.error)}`,
+        true,
+      );
+    } else if (domainMessage) {
+      setStatus(domainMessage, false);
+    } else {
+      clearStatus();
     }
 
     if (persist) {
-      storeExpression(compiledFunction.source);
+      persistSlots();
     }
 
+    updateActiveExample();
     scheduleDraw();
-    return true;
+    return !firstError;
   }
 
-  function submitExpression({ canonicalize = true, blur = false } = {}) {
+  function submitFunctions({ canonicalize = true, blur = false } = {}) {
     window.clearTimeout(inputTimer);
-    const applied = applyExpression(expressionInput.value, {
+    const applied = refreshFunctions({
       autoFit: true,
       persist: true,
       canonicalize,
     });
 
-    if (blur) {
-      expressionInput.blur();
+    if (blur && applied) {
+      activeSlot.input.blur();
     }
 
     return applied;
   }
 
   function resetView() {
-    if (currentFunction) {
-      view = sanitizeView(computeAutoView(currentFunction).view);
+    const validFunctions = slots
+      .filter((slot) => slot.compiled)
+      .map((slot) => slot.compiled);
+
+    if (validFunctions.length > 0) {
+      view = sanitizeView(computeAutoView(validFunctions).view);
     } else {
       view = { ...DEFAULT_VIEW };
     }
@@ -700,12 +846,8 @@
     };
 
     pinchState.distance = Math.max(distance, 1);
-    pinchState.anchor = {
-      x: pinchState.anchor.x,
-      y: pinchState.anchor.y,
-      ratioX,
-      ratioY,
-    };
+    pinchState.anchor.ratioX = ratioX;
+    pinchState.anchor.ratioY = ratioY;
 
     scheduleDraw();
   }
@@ -727,46 +869,49 @@
     }
   }
 
-  expressionInput.addEventListener("input", () => {
-    window.clearTimeout(inputTimer);
-    const raw = expressionInput.value;
-
-    if (!raw.trim()) {
-      inputTimer = window.setTimeout(() => {
-        clearPlot({ persist: true });
-      }, 180);
-      return;
-    }
-
-    inputTimer = window.setTimeout(() => {
-      applyExpression(raw, {
-        autoFit: true,
-        persist: true,
-      });
-    }, 280);
-  });
-
-  expressionInput.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") {
-      return;
-    }
-
-    event.preventDefault();
-    submitExpression({
-      canonicalize: true,
-      blur: isCoarsePointer(),
+  for (const slot of slots) {
+    slot.input.addEventListener("focus", () => {
+      activateSlot(slot);
     });
-  });
+
+    slot.input.addEventListener("pointerdown", () => {
+      activateSlot(slot);
+    });
+
+    slot.input.addEventListener("input", () => {
+      activateSlot(slot);
+      window.clearTimeout(inputTimer);
+      inputTimer = window.setTimeout(() => {
+        refreshFunctions({
+          autoFit: true,
+          persist: true,
+        });
+      }, 280);
+    });
+
+    slot.input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.isComposing) {
+        return;
+      }
+
+      event.preventDefault();
+      submitFunctions({
+        canonicalize: true,
+        blur: isCoarsePointer(),
+      });
+    });
+  }
 
   plotButton.addEventListener("click", () => {
-    submitExpression({ canonicalize: true, blur: false });
+    submitFunctions({ canonicalize: true, blur: false });
   });
 
   for (const button of exampleButtons) {
     button.addEventListener("click", () => {
       window.clearTimeout(inputTimer);
-      expressionInput.value = button.dataset.expression;
-      applyExpression(button.dataset.expression, {
+      activateSlot(activeSlot);
+      activeSlot.input.value = button.dataset.expression;
+      refreshFunctions({
         autoFit: true,
         persist: true,
         canonicalize: true,
@@ -859,15 +1004,17 @@
   resizeObserver.observe(canvas);
   window.addEventListener("resize", syncCanvasSize);
 
-  const storedExpression = readStoredExpression();
-  const initialExpression =
-    storedExpression && storedExpression.trim()
-      ? storedExpression
-      : expressionInput.value || "sin(x)";
+  const storedExpressions = readStoredExpressions();
 
-  expressionInput.value = initialExpression;
+  for (const slot of slots) {
+    slot.input.value = storedExpressions[slot.index] || "";
+  }
+
+  const initialSlot =
+    slots.find((slot) => slot.input.value.trim()) || slots[0];
+  activateSlot(initialSlot);
   syncCanvasSize();
-  applyExpression(initialExpression, {
+  refreshFunctions({
     autoFit: true,
     persist: false,
   });
