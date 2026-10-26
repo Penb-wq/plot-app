@@ -7,6 +7,10 @@
   const expressionError = document.querySelector("#expression-error");
   const plotButton = document.querySelector("#plot-button");
   const exampleButtons = [...document.querySelectorAll(".example-chip")];
+  const themeToggle = document.querySelector("#theme-toggle");
+  const themeColorMeta = document.querySelector("#theme-color-meta");
+  const intersectionLegend = document.querySelector("#intersection-legend");
+  const intersectionSummary = document.querySelector("#intersection-summary");
   const zoomInButton = document.querySelector("#zoom-in");
   const zoomOutButton = document.querySelector("#zoom-out");
   const resetViewButton = document.querySelector("#reset-view");
@@ -17,17 +21,20 @@
     majorGrid: "#e7e4dd",
     axis: "#b8b8b0",
     tick: "#686a62",
+    ink: "#20211e",
   };
 
   const SERIES_COLORS = ["#ee5b38", "#2f73d8"];
   const SERIES_LABELS = ["y₁", "y₂"];
   const STORAGE_KEY = "plot.functions.v2";
   const LEGACY_STORAGE_KEY = "plot.expression.v1";
+  const THEME_STORAGE_KEY = "plot.theme.v1";
   const DEFAULT_EXPRESSIONS = ["sin(x)", "cos(x)"];
   const DEFAULT_X_RANGE = { min: -5, max: 5 };
   const DEFAULT_VIEW = { xMin: -5, xMax: 5, yMin: -3, yMax: 3 };
   const MIN_SPAN = 1e-8;
   const MAX_SPAN = 1e10;
+  const MAX_INTERSECTIONS = 10;
   const MONO_FONT =
     '"SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace';
 
@@ -74,6 +81,7 @@
   let canvasRetryTimer = 0;
   let canvasSyncAttempts = 0;
   let resizeObserver = null;
+  let intersectionCache = { signature: "", result: null };
   let pinchState = null;
 
   function createSlot(index, selectors) {
@@ -95,6 +103,82 @@
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
+  }
+
+  function readCssColor(name, fallback) {
+    const value = window
+      .getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
+    return value || fallback;
+  }
+
+  function refreshThemePalette() {
+    COLORS.background = readCssColor("--canvas-surface", "#fbfaf6");
+    COLORS.minorGrid = readCssColor("--canvas-minor-grid", "#f1efe9");
+    COLORS.majorGrid = readCssColor("--canvas-major-grid", "#e7e4dd");
+    COLORS.axis = readCssColor("--canvas-axis", "#b8b8b0");
+    COLORS.tick = readCssColor("--canvas-tick", "#686a62");
+    COLORS.ink = readCssColor("--ink", "#20211e");
+
+    SERIES_COLORS[0] = readCssColor("--series-1", "#ee5b38");
+    SERIES_COLORS[1] = readCssColor("--series-2", "#2f73d8");
+
+    for (const slot of slots) {
+      slot.color = SERIES_COLORS[slot.index];
+    }
+  }
+
+  function applyTheme(theme, { persist = true } = {}) {
+    const normalizedTheme = theme === "dark" ? "dark" : "light";
+    const isDark = normalizedTheme === "dark";
+
+    document.documentElement.dataset.theme = normalizedTheme;
+
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute(
+        "content",
+        isDark ? "#151812" : "#f1efe8",
+      );
+    }
+
+    if (themeToggle) {
+      themeToggle.setAttribute("aria-pressed", String(isDark));
+      themeToggle.setAttribute(
+        "aria-label",
+        isDark ? "退出护眼模式" : "进入护眼模式",
+      );
+      themeToggle.title = isDark ? "退出护眼模式" : "护眼模式";
+    }
+
+    if (persist) {
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+      } catch {
+        // The theme still changes for the current session.
+      }
+    }
+
+    refreshThemePalette();
+    scheduleDraw();
+  }
+
+  function setupThemeControl() {
+    if (!themeToggle) {
+      refreshThemePalette();
+      return;
+    }
+
+    themeToggle.addEventListener("click", () => {
+      const nextTheme =
+        document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(nextTheme);
+    });
+
+    applyTheme(
+      document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+      { persist: false },
+    );
   }
 
   function isCoarsePointer() {
@@ -670,6 +754,424 @@
     context.restore();
   }
 
+  function evaluateFunctionPair(first, second, x) {
+    const firstY = first.evaluate(x);
+    const secondY = second.evaluate(x);
+
+    if (!Number.isFinite(firstY) || !Number.isFinite(secondY)) {
+      return null;
+    }
+
+    return {
+      firstY,
+      secondY,
+      difference: firstY - secondY,
+    };
+  }
+
+  function findIntersections(first, second) {
+    const xSpan = view.xMax - view.xMin;
+    const ySpan = view.yMax - view.yMin;
+    const sampleCount = clamp(Math.ceil(metrics.width), 360, 900);
+    const stepX = xSpan / sampleCount;
+    const rootTolerance = Math.max(1e-9, ySpan * 1e-7);
+    const acceptTolerance = Math.max(1e-6, ySpan * 1e-5);
+    const touchTolerance = Math.max(1e-5, ySpan * 1e-4);
+    const dedupeTolerance = Math.max(1e-7, stepX * 0.55);
+    const samples = [];
+    const candidates = [];
+    let previous = null;
+    let finiteCount = 0;
+    let nearZeroCount = 0;
+
+    function addCandidate(x) {
+      const pair = evaluateFunctionPair(first, second, x);
+
+      if (!pair || Math.abs(pair.difference) > acceptTolerance) {
+        return;
+      }
+
+      const y = (pair.firstY + pair.secondY) / 2;
+
+      if (
+        y < view.yMin - ySpan * 0.02 ||
+        y > view.yMax + ySpan * 0.02
+      ) {
+        return;
+      }
+
+      if (
+        candidates.some(
+          (candidate) => Math.abs(candidate.x - x) < dedupeTolerance,
+        )
+      ) {
+        return;
+      }
+
+      candidates.push({ x, y });
+    }
+
+    function bisect(leftX, rightX, leftDifference) {
+      let lowX = leftX;
+      let highX = rightX;
+      let lowDifference = leftDifference;
+
+      for (let iteration = 0; iteration < 50; iteration += 1) {
+        const middleX = (lowX + highX) / 2;
+        const pair = evaluateFunctionPair(first, second, middleX);
+
+        if (!pair) {
+          return null;
+        }
+
+        if (Math.abs(pair.difference) <= rootTolerance) {
+          return middleX;
+        }
+
+        if (Math.sign(pair.difference) === Math.sign(lowDifference)) {
+          lowX = middleX;
+          lowDifference = pair.difference;
+        } else {
+          highX = middleX;
+        }
+      }
+
+      return (lowX + highX) / 2;
+    }
+
+    function refineTouch(leftX, rightX) {
+      let lowX = leftX;
+      let highX = rightX;
+
+      for (let iteration = 0; iteration < 32; iteration += 1) {
+        const firstThird = lowX + (highX - lowX) / 3;
+        const secondThird = highX - (highX - lowX) / 3;
+        const firstPair = evaluateFunctionPair(first, second, firstThird);
+        const secondPair = evaluateFunctionPair(first, second, secondThird);
+
+        if (!firstPair || !secondPair) {
+          return null;
+        }
+
+        if (
+          Math.abs(firstPair.difference) <
+          Math.abs(secondPair.difference)
+        ) {
+          highX = secondThird;
+        } else {
+          lowX = firstThird;
+        }
+      }
+
+      return (lowX + highX) / 2;
+    }
+
+    for (let index = 0; index <= sampleCount; index += 1) {
+      const x = view.xMin + (index / sampleCount) * xSpan;
+      const pair = evaluateFunctionPair(first, second, x);
+
+      if (!pair) {
+        samples.push(null);
+        previous = null;
+        continue;
+      }
+
+      finiteCount += 1;
+
+      if (Math.abs(pair.difference) <= rootTolerance) {
+        nearZeroCount += 1;
+        addCandidate(x);
+      }
+
+      if (
+        previous &&
+        Math.sign(previous.difference) !== Math.sign(pair.difference)
+      ) {
+        const root = bisect(previous.x, x, previous.difference);
+
+        if (root !== null) {
+          addCandidate(root);
+        }
+      }
+
+      const sample = { x, difference: pair.difference };
+      samples.push(sample);
+      previous = sample;
+    }
+
+    if (finiteCount > 20 && nearZeroCount > finiteCount * 0.9) {
+      return {
+        points: [],
+        total: 0,
+        coincident: true,
+      };
+    }
+
+    for (let index = 1; index < samples.length - 1; index += 1) {
+      const left = samples[index - 1];
+      const center = samples[index];
+      const right = samples[index + 1];
+
+      if (!left || !center || !right) {
+        continue;
+      }
+
+      if (
+        Math.abs(center.difference) <= touchTolerance &&
+        Math.abs(center.difference) <= Math.abs(left.difference) &&
+        Math.abs(center.difference) <= Math.abs(right.difference)
+      ) {
+        const root = refineTouch(left.x, right.x);
+
+        if (root !== null) {
+          addCandidate(root);
+        }
+      }
+    }
+
+    candidates.sort((a, b) => a.x - b.x);
+
+    return {
+      points: candidates.slice(0, MAX_INTERSECTIONS),
+      total: candidates.length,
+      coincident: false,
+    };
+  }
+
+  function formatCoordinate(value) {
+    if (Math.abs(value) < 5e-5) {
+      return "0";
+    }
+
+    const absolute = Math.abs(value);
+
+    if (absolute >= 1e5 || absolute < 1e-3) {
+      return value
+        .toExponential(1)
+        .replace("e+", "e")
+        .replace(/\.0e/, "e");
+    }
+
+    const decimals = absolute >= 100 ? 1 : 2;
+    return value
+      .toFixed(decimals)
+      .replace(/(\.\d*?)0+$/, "$1")
+      .replace(/\.$/, "");
+  }
+
+  function roundedRectPath(x, y, width, height, radius) {
+    const safeRadius = Math.min(radius, width / 2, height / 2);
+
+    context.beginPath();
+    context.moveTo(x + safeRadius, y);
+    context.lineTo(x + width - safeRadius, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+    context.lineTo(x + width, y + height - safeRadius);
+    context.quadraticCurveTo(
+      x + width,
+      y + height,
+      x + width - safeRadius,
+      y + height,
+    );
+    context.lineTo(x + safeRadius, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+    context.lineTo(x, y + safeRadius);
+    context.quadraticCurveTo(x, y, x + safeRadius, y);
+    context.closePath();
+  }
+
+  function rectanglesOverlap(first, second) {
+    return !(
+      first.x + first.width <= second.x ||
+      second.x + second.width <= first.x ||
+      first.y + first.height <= second.y ||
+      second.y + second.height <= first.y
+    );
+  }
+
+  function getOverlayRect(selector, canvasRect) {
+    const element = document.querySelector(selector);
+
+    if (!element) {
+      return null;
+    }
+
+    const rect = element.getBoundingClientRect();
+
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    return {
+      x: rect.left - canvasRect.left - 5,
+      y: rect.top - canvasRect.top - 5,
+      width: rect.width + 10,
+      height: rect.height + 10,
+    };
+  }
+
+  function drawIntersections(points) {
+    if (points.length === 0) {
+      return;
+    }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const avoidedRects = [
+      getOverlayRect(".plot-legend", canvasRect),
+      getOverlayRect(".plot-controls", canvasRect),
+    ].filter(Boolean);
+    const drawnLabels = [];
+
+    context.save();
+    context.font = `10px ${MONO_FONT}`;
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+
+    for (const point of points) {
+      const x = xToPixel(point.x);
+      const y = yToPixel(point.y);
+
+      if (
+        x < 9 ||
+        x > metrics.width - 9 ||
+        y < 9 ||
+        y > metrics.height - 9
+      ) {
+        continue;
+      }
+
+      const label = `(${formatCoordinate(point.x)}, ${formatCoordinate(
+        point.y,
+      )})`;
+      const labelWidth = Math.ceil(context.measureText(label).width) + 14;
+      const labelHeight = 22;
+      const candidates = [
+        { x: x + 10, y: y - labelHeight - 8 },
+        { x: x + 10, y: y + 8 },
+        { x: x - labelWidth - 10, y: y - labelHeight - 8 },
+        { x: x - labelWidth - 10, y: y + 8 },
+        { x: x - labelWidth - 24, y: y - labelHeight / 2 },
+        { x: x + 24, y: y - labelHeight / 2 },
+      ];
+      let labelRect = null;
+
+      for (const candidate of candidates) {
+        const rect = {
+          x: clamp(candidate.x, 5, metrics.width - labelWidth - 5),
+          y: clamp(candidate.y, 5, metrics.height - labelHeight - 5),
+          width: labelWidth,
+          height: labelHeight,
+        };
+        const overlaps =
+          avoidedRects.some((avoided) => rectanglesOverlap(rect, avoided)) ||
+          drawnLabels.some((drawn) => rectanglesOverlap(rect, drawn));
+
+        if (!overlaps) {
+          labelRect = rect;
+          break;
+        }
+      }
+
+      if (labelRect) {
+        drawnLabels.push(labelRect);
+        roundedRectPath(
+          labelRect.x,
+          labelRect.y,
+          labelRect.width,
+          labelRect.height,
+          5,
+        );
+        context.fillStyle = COLORS.background;
+        context.fill();
+        context.strokeStyle = COLORS.axis;
+        context.lineWidth = 1;
+        context.stroke();
+        context.fillStyle = COLORS.ink;
+        context.fillText(
+          label,
+          labelRect.x + 7,
+          labelRect.y + labelRect.height / 2 + 0.5,
+        );
+      }
+    }
+
+    for (const point of points) {
+      const x = xToPixel(point.x);
+      const y = yToPixel(point.y);
+
+      if (
+        x < 9 ||
+        x > metrics.width - 9 ||
+        y < 9 ||
+        y > metrics.height - 9
+      ) {
+        continue;
+      }
+
+      context.beginPath();
+      context.arc(x, y, 5.5, 0, Math.PI * 2);
+      context.fillStyle = COLORS.background;
+      context.fill();
+      context.strokeStyle = COLORS.ink;
+      context.lineWidth = 1.8;
+      context.stroke();
+
+      context.beginPath();
+      context.arc(x, y, 2.1, 0, Math.PI * 2);
+      context.fillStyle = COLORS.ink;
+      context.fill();
+    }
+
+    context.restore();
+  }
+
+  function updateIntersectionLegend(result, hasPair) {
+    if (!intersectionLegend || !intersectionSummary) {
+      return;
+    }
+
+    if (!hasPair) {
+      if (!intersectionLegend.hidden) {
+        intersectionLegend.hidden = true;
+        intersectionLegend.removeAttribute("data-points");
+        intersectionLegend.removeAttribute("data-signature");
+      }
+      return;
+    }
+
+    let summary = "无交点";
+
+    if (result.coincident) {
+      summary = "两函数重合";
+    } else if (result.total > 0) {
+      summary = `${result.total} 个交点`;
+    }
+
+    const coordinateText = result.points
+      .map(
+        (point) =>
+          `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)})`,
+      )
+      .join(" ");
+    const signature = `${summary}|${coordinateText}`;
+
+    intersectionLegend.hidden = false;
+
+    if (intersectionLegend.dataset.signature === signature) {
+      return;
+    }
+
+    intersectionLegend.dataset.signature = signature;
+    intersectionLegend.dataset.points = JSON.stringify(result.points);
+    intersectionLegend.dataset.total = String(result.total);
+    intersectionLegend.dataset.coincident = String(result.coincident);
+    intersectionLegend.setAttribute(
+      "aria-label",
+      coordinateText ? `${summary}：${coordinateText}` : summary,
+    );
+    intersectionSummary.textContent = summary;
+  }
+
   function draw() {
     if (metrics.width <= 1 || metrics.height <= 1) {
       scheduleCanvasSync();
@@ -693,6 +1195,46 @@
       if (slot.compiled) {
         drawCurve(slot.compiled, slot.color, 1);
       }
+    }
+
+    const firstFunction = slots[0].compiled;
+    const secondFunction = slots[1].compiled;
+    const hasPair = Boolean(firstFunction && secondFunction);
+
+    if (hasPair) {
+      try {
+        const signature = [
+          firstFunction.source,
+          secondFunction.source,
+          view.xMin,
+          view.xMax,
+          view.yMin,
+          view.yMax,
+          metrics.width,
+          metrics.height,
+        ].join("|");
+
+        if (intersectionCache.signature !== signature) {
+          intersectionCache = {
+            signature,
+            result: findIntersections(firstFunction, secondFunction),
+          };
+        }
+
+        const intersections = intersectionCache.result;
+        updateIntersectionLegend(intersections, true);
+        drawIntersections(intersections.points);
+      } catch {
+        updateIntersectionLegend(
+          { points: [], total: 0, coincident: false },
+          false,
+        );
+      }
+    } else {
+      updateIntersectionLegend(
+        { points: [], total: 0, coincident: false },
+        false,
+      );
     }
   }
 
@@ -1081,6 +1623,7 @@
 
   const initialSlot =
     slots.find((slot) => slot.input.value.trim()) || slots[0];
+  setupThemeControl();
   activateSlot(initialSlot);
   syncCanvasSize();
   refreshFunctions({

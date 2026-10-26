@@ -12,10 +12,50 @@
   --accent-strong: #d94b2b;
   --error: #b33e2d;
   --radius: 8px;
+  --canvas-surface: #fbfaf6;
+  --canvas-minor-grid: #f1efe9;
+  --canvas-major-grid: #e7e4dd;
+  --canvas-axis: #b8b8b0;
+  --canvas-tick: #686a62;
+  --overlay-surface: rgb(251 250 246 / 88%);
+  --overlay-control: rgb(251 250 246 / 93%);
+  --soft-hover: #f1efe8;
+  --soft-active: #e9e6dd;
+  --chip-hover: rgb(255 255 255 / 38%);
+  --panel-shadow: 0 1px 0 rgb(32 33 30 / 3%);
+  --controls-shadow: 0 4px 18px rgb(32 33 30 / 7%);
   --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, "Liberation Mono",
     monospace;
   --sans: "Avenir Next", Avenir, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #151812;
+  --surface: #1d211a;
+  --ink: #edf0e5;
+  --muted: #a4aa9c;
+  --faint: #70786b;
+  --line: #353b31;
+  --line-soft: #2a2f27;
+  --accent: #ff7a57;
+  --series-1: #ff7957;
+  --series-2: #78a4ff;
+  --accent-strong: #ff8b6d;
+  --error: #ff927c;
+  --canvas-surface: #1d211a;
+  --canvas-minor-grid: #242920;
+  --canvas-major-grid: #2d3329;
+  --canvas-axis: #606958;
+  --canvas-tick: #a4aa9c;
+  --overlay-surface: rgb(29 33 26 / 90%);
+  --overlay-control: rgb(29 33 26 / 94%);
+  --soft-hover: #292e26;
+  --soft-active: #30362d;
+  --chip-hover: rgb(255 255 255 / 6%);
+  --panel-shadow: 0 1px 0 rgb(0 0 0 / 18%);
+  --controls-shadow: 0 6px 22px rgb(0 0 0 / 24%);
 }
 
 * {
@@ -26,6 +66,7 @@ html {
   height: 100%;
   background: var(--background);
   color-scheme: light;
+  transition: background-color 180ms ease;
 }
 
 body {
@@ -38,6 +79,9 @@ body {
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
 }
 
 button,
@@ -87,6 +131,12 @@ a {
   color: var(--accent);
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .edition {
   display: inline-flex;
   align-items: center;
@@ -97,6 +147,43 @@ a {
   font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
+}
+
+.theme-toggle {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.theme-toggle:hover {
+  border-color: color-mix(in srgb, var(--muted) 48%, var(--line));
+  background: var(--chip-hover);
+  color: var(--ink);
+}
+
+.theme-toggle .icon-sun {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-sun {
+  display: block;
+  color: var(--accent);
 }
 
 .edition-dot {
@@ -127,7 +214,7 @@ a {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: 0 1px 0 rgb(32 33 30 / 3%);
+  box-shadow: var(--panel-shadow);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease;
@@ -230,7 +317,7 @@ a {
 }
 
 .plot-button:hover {
-  background: #34362f;
+  background: color-mix(in srgb, var(--ink) 88%, var(--surface));
 }
 
 .plot-button:active {
@@ -240,6 +327,7 @@ a {
 .plot-button:focus-visible,
 .example-chip:focus-visible,
 .icon-button:focus-visible,
+.theme-toggle:focus-visible,
 .brand:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -299,8 +387,8 @@ a {
 }
 
 .example-chip:hover {
-  border-color: #b9b7ad;
-  background: rgb(255 255 255 / 38%);
+  border-color: color-mix(in srgb, var(--muted) 52%, var(--line));
+  background: var(--chip-hover);
   color: var(--ink);
 }
 
@@ -319,7 +407,7 @@ a {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 1px 0 rgb(32 33 30 / 3%);
+  box-shadow: var(--panel-shadow);
 }
 
 #plot-canvas {
@@ -349,9 +437,9 @@ a {
   align-items: stretch;
   gap: 6px;
   overflow: hidden;
-  border: 1px solid rgb(216 214 206 / 86%);
+  border: 1px solid var(--line);
   border-radius: 5px;
-  background: rgb(251 250 246 / 88%);
+  background: var(--overlay-surface);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
@@ -399,6 +487,35 @@ a {
   background: var(--series-2);
 }
 
+.legend-intersection {
+  padding-top: 1px;
+}
+
+.intersection-key {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.intersection-key::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+#intersection-summary {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plot-controls {
   position: absolute;
   right: 12px;
@@ -408,8 +525,8 @@ a {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgb(251 250 246 / 93%);
-  box-shadow: 0 4px 18px rgb(32 33 30 / 7%);
+  background: var(--overlay-control);
+  box-shadow: var(--controls-shadow);
   backdrop-filter: blur(7px);
 }
 
@@ -434,12 +551,12 @@ a {
 }
 
 .icon-button:hover {
-  background: #f1efe8;
+  background: var(--soft-hover);
   color: var(--ink);
 }
 
 .icon-button:active {
-  background: #e9e6dd;
+  background: var(--soft-active);
 }
 
 .visually-hidden {
@@ -474,6 +591,15 @@ a {
 
   .brand {
     font-size: 23px;
+  }
+
+  .top-actions {
+    gap: 8px;
+  }
+
+  .theme-toggle {
+    width: 44px;
+    height: 44px;
   }
 
   .composer {
@@ -558,8 +684,9 @@ a {
   }
 
   .plot-controls {
+    top: 10px;
+    bottom: auto;
     right: 10px;
-    bottom: 10px;
   }
 
   .icon-button {
